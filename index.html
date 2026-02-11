@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Vertical Shooter</title>
+
+<!-- Modern clean game font -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+
+<style>
+  body { 
+    margin: 0;
+    background: black;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    font-family: 'Poppins', sans-serif; 
+    position: fixed;
+top: 0;
+left: 0;
+width: 100vw;
+height: 100vh;
+object-fit: cover;
+z-index: -1;
+
+  }
+ canvas { 
+  top: 0;
+  left: 0;
+  border: none; }
+
+  #gameOver {
+    position: absolute;
+    top: 40%;
+    font-size: 40px;
+    color: white;
+    font-family: 'Poppins', sans-serif;
+    display: none;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="gameCanvas" width="400" height="600"></canvas>
+<div id="gameOver">GAME OVER<br><small>Refresh to Restart</small></div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// ---------------- IMAGES ----------------
+const bgImg = new Image(); bgImg.src = "Assests/download.JPEG";
+
+const player1Img = new Image(); player1Img.src = "Assests/player1.png";
+const player2Img = new Image(); player2Img.src = "Assests/player2.png";
+let playerImg = player1Img;
+
+const pBullet1 = new Image(); pBullet1.src = "Assests/player1bullet.png";
+const pBullet2 = new Image(); pBullet2.src = "Assests/player2bullet.png";
+let pBulletImg = pBullet1;
+
+const e1Img = new Image(); e1Img.src = "Assests/enemy1.png";
+const e2Img = new Image(); e2Img.src = "Assests/enemy2.png";
+
+const e1Bullet = new Image(); e1Bullet.src = "Assests/enemy1bullet.png";
+const e2Bullet = new Image(); e2Bullet.src = "Assests/enemy2bullet.png";
+
+const upImg = new Image(); upImg.src = "Assests/upblue.png";
+
+const explosionImg = new Image();
+explosionImg.src = "Assests/explosion.png"; // 3x3 explosion sheet (512x512)
+
+// ---------------- PLAYER ----------------
+const player = {
+  x: canvas.width / 2 - 25,
+  y: canvas.height - 80,
+  width: 50,
+  height: 50,
+  speed: 5,
+  kills: 0,
+  lives: 3
+};
+
+const playerBullets = [];
+const enemyBullets = [];
+let bulletSpeed = 6;
+
+// ---------------- ENEMIES ----------------
+const enemies = [];
+let enemySpeed = 2;
+
+// ---------------- UPGRADE ----------------
+let upgrade = null;
+let upgradeDropped = false;
+
+// ---------------- EXPLOSIONS ----------------
+const explosions = [];
+const expFrames = 9;
+
+// ---------------- INPUT ----------------
+const keys = {};
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+// ---------------- PLAYER SHOOT ----------------
+function shootPlayer() {
+  playerBullets.push({
+    x: player.x + player.width/2 - 8,
+    y: player.y - 10,
+    width: 16,
+    height: 25,
+    img: pBulletImg
+  });
+}
+setInterval(shootPlayer, 300); // automatic shooting
+
+// ---------------- ENEMY SHOOT ----------------
+function shootEnemy(enemy) {
+  enemyBullets.push({
+    x: enemy.x + enemy.width/2 - 10,
+    y: enemy.y + enemy.height,
+    width: 26,
+    height: 36,
+    img: enemy.type === "e1" ? e1Bullet : e2Bullet
+  });
+}
+
+// enemy continuous shooting
+function startEnemyShooting(enemy) {
+  enemy.shootInterval = setInterval(() => shootEnemy(enemy), 600);
+}
+
+// ---------------- SPAWN ENEMY ----------------
+function spawnEnemy() {
+  const type = Math.random() < 0.5 ? "e1" : "e2";
+  const img = type === "e1" ? e1Img : e2Img;
+
+  const enemy = {
+    x: Math.random() * (canvas.width - 40),
+    y: -50,
+    width: 40,
+    height: 40,
+    img,
+    type,
+    startedShooting: false,
+    vx: (Math.random() * 2 - 1) * 2,
+    zigzagTimer: 0
+  };
+
+  enemies.push(enemy);
+}
+
+// ---------------- EXPLOSION ----------------
+function createExplosion(x, y) {
+  explosions.push({ x, y, frame: 0 });
+}
+
+// ---------------- UPGRADE ----------------
+function dropUpgrade() {
+  upgrade = {
+    x: Math.random() * (canvas.width - 40),
+    y: -40,
+    width: 40,
+    height: 40
+  };
+  upgradeDropped = true;
+}
+
+// ---------------- COLLISION ----------------
+function collide(a, b) {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+// ---------------- GAME OVER ----------------
+function endGame() {
+  document.getElementById("gameOver").style.display = "block";
+  cancelAnimationFrame(loopId);
+  enemies.forEach(e => clearInterval(e.shootInterval));
+}
+
+// ---------------- UPDATE LOOP ----------------
+let lastTime = Date.now();
+let loopId;
+
+function update() {
+  loopId = requestAnimationFrame(update);
+
+  // Background
+  ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+
+  // Player Movement
+  if (keys["ArrowLeft"] && player.x > 0) player.x -= player.speed;
+  if (keys["ArrowRight"] && player.x + player.width < canvas.width) player.x += player.speed;
+
+  ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+
+  // ---------------- PLAYER BULLETS ----------------
+  for (let i = playerBullets.length - 1; i >= 0; i--) {
+    const b = playerBullets[i];
+    b.y -= bulletSpeed;
+    ctx.drawImage(b.img, b.x, b.y, b.width, b.height);
+
+    if (b.y < -30) playerBullets.splice(i, 1);
+
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      if (collide(b, e)) {
+        createExplosion(e.x, e.y);
+        enemies.splice(j, 1);
+        playerBullets.splice(i, 1);
+        player.kills++;
+
+        if (!upgradeDropped && player.kills >= 8) dropUpgrade();
+      }
+    }
+  }
+
+  // ---------------- SPAWN ENEMIES ----------------
+  if (Math.random() < 0.02) spawnEnemy();
+
+  // ---------------- ENEMY MOVEMENT & SHOOTING ----------------
+  enemies.forEach(e => {
+    e.y += enemySpeed;
+
+    e.x += e.vx;
+    e.zigzagTimer++;
+
+    if (e.x <= 0 || e.x + e.width >= canvas.width) {
+      e.vx *= -1;
+    }
+
+    if (e.zigzagTimer % 40 === 0) {
+      e.vx = (Math.random() * 2 - 1) * 2;
+    }
+
+    if (!e.startedShooting && e.y >= 0) {
+      startEnemyShooting(e);
+      e.startedShooting = true;
+    }
+
+    ctx.drawImage(e.img, e.x, e.y, e.width, e.height);
+
+    if (e.y > canvas.height) {
+      clearInterval(e.shootInterval);
+      enemies.splice(enemies.indexOf(e), 1);
+    }
+  });
+
+  // ---------------- ENEMY BULLETS ----------------
+  for (let i = enemyBullets.length - 1; i >= 0; i--) {
+    const b = enemyBullets[i];
+    b.y += 2.5;
+    ctx.drawImage(b.img, b.x, b.y, b.width, b.height);
+
+    if (b.y > canvas.height) enemyBullets.splice(i, 1);
+
+    if (collide(b, player)) {
+      enemyBullets.splice(i, 1);
+      player.lives--;
+
+      ctx.fillStyle = "rgba(255,0,0,0.25)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      if (player.lives <= 0) endGame();
+    }
+  }
+
+  // ---------------- UPGRADE ----------------
+  if (upgrade) {
+    upgrade.y += 2;
+    ctx.drawImage(upImg, upgrade.x, upgrade.y, upgrade.width, upgrade.height);
+
+    if (collide(upgrade, player)) {
+      playerImg = player2Img;
+      pBulletImg = pBullet2;
+      upgrade = null;
+    }
+
+    if (upgrade.y > canvas.height) upgrade = null;
+  }
+
+  // ---------------- EXPLOSIONS ----------------
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    const e = explosions[i];
+    const frameX = (e.frame % 3) * (512 / 3);
+    const frameY = Math.floor(e.frame / 3) * (512 / 3);
+
+    ctx.drawImage(explosionImg, frameX, frameY, 512/3, 512/3, e.x, e.y, 50, 50);
+
+    e.frame++;
+    if (e.frame >= expFrames) explosions.splice(i, 1);
+  }
+
+  // ---------------- UI ----------------
+  ctx.fillStyle = "white";
+  ctx.font = "18px Poppins";
+
+  ctx.fillText("Score: " + player.kills, 10, 25);
+
+  ctx.textAlign = "right";
+  ctx.fillText("Lives: " + player.lives, canvas.width - 10, 25);
+
+  ctx.textAlign = "left";
+
+  // ---------------- DIFFICULTY ----------------
+  const now = Date.now();
+  if (now - lastTime > 5000) {
+    enemySpeed += 0.2;
+    lastTime = now;
+  }
+}
+
+update();
+</script>
+
+</body>
+</html>
